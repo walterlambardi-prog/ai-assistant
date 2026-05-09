@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+.env
+*.log
+backend/uploads/audio/*
+!backend/uploads/audio/.gitkeep
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+.DS_Store

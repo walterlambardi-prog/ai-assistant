@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  title        String    @default("Nueva sesión")
+  model        String?
+  systemPrompt String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  messages     Message[]
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  sessionId  String
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role       String   // user | assistant | system | tool
+  content    String
+  inputType  String   @default("none") // text | voice | tool | none
+  outputType String   @default("none") // text | voice | text_voice | tool_result | none
+  audioUrl   String?
+  toolName   String?
+  metadata   String?  // JSON string
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+model Tool {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  displayName     String
+  description     String
+  usageGuidance   String   @default("")
+  enabled         Boolean  @default(true)
+  type            String   @default("http") // http
+  method          String   @default("GET")
+  url             String
+  headers         String   @default("{}")        // JSON
+  queryParams     String   @default("{}")        // JSON
+  bodyTemplate    String   @default("{}")        // JSON
+  parameters      String   @default("{\"type\":\"object\",\"properties\":{}}") // JSON Schema
+  parameterPolicy String   @default("{}")        // JSON
+  responseMapping String   @default("{}")        // JSON
+  timeoutMs       Int      @default(10000)
+  maxResponseKb   Int      @default(256)
+  allowedHosts    String   @default("[]")        // JSON array
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AppConfig {
+  id             String   @id @default("singleton")
+  defaultModel   String   @default("qwen2.5:7b")
+  temperature    Float    @default(0.3)
+  topP           Float    @default(0.9)
+  ollamaBaseUrl  String   @default("http://localhost:11434")
+  ttsEnabled     Boolean  @default(true)
+  sttEnabled     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

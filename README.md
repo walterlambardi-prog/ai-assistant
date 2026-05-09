@@ -15,7 +15,7 @@ Sistema local full-stack para conversar con modelos de **Ollama**, con sesiones 
 ## Estructura
 
 ```
-ai-local-assistant/
+ai-assistant/
   backend/
   frontend/
   docs/
