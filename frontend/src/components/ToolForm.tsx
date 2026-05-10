@@ -2,6 +2,21 @@
 import { useState } from "react";
 import type { Tool } from "@/lib/types";
 import { api } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { AlertCircle, Plus, Save, X, Play, Trash2 } from "lucide-react";
 
 type Props = {
   initial?: Tool;
@@ -15,7 +30,8 @@ const DEFAULT_PARAMS = JSON.stringify(
   2
 );
 
-export default function ToolForm({ initial, onCancel, onSave }: Props) {
+export default function ToolForm({ initial, onCancel, onSave }: Readonly<Props>) {
+  const { t: tr } = useI18n();
   const [name, setName] = useState(initial?.name || "");
   const [displayName, setDisplayName] = useState(initial?.displayName || "");
   const [description, setDescription] = useState(initial?.description || "");
@@ -32,16 +48,40 @@ export default function ToolForm({ initial, onCancel, onSave }: Props) {
   const [timeoutMs, setTimeoutMs] = useState(initial?.timeoutMs || 10000);
   const [maxResponseKb, setMaxResponseKb] = useState(initial?.maxResponseKb || 256);
   const [allowedHosts, setAllowedHosts] = useState(initial?.allowedHosts || "[]");
+  const [secrets, setSecrets] = useState<Array<{ key: string; value: string; placeholder: boolean }>>(
+    () => {
+      try {
+        const obj = JSON.parse(initial?.secrets || "{}") as Record<string, string>;
+        return Object.entries(obj).map(([key, value]) => ({
+          key,
+          value: value === "***" ? "" : value,
+          placeholder: value === "***",
+        }));
+      } catch {
+        return [];
+      }
+    }
+  );
   const [error, setError] = useState<string | null>(null);
   const [testArgs, setTestArgs] = useState("{}");
   const [testResult, setTestResult] = useState<unknown>(null);
+
+  function buildSecretsJson(): string {
+    const out: Record<string, string> = {};
+    for (const { key, value, placeholder } of secrets) {
+      const k = key.trim();
+      if (!k) continue;
+      out[k] = placeholder && value === "" ? "***" : value;
+    }
+    return JSON.stringify(out);
+  }
 
   function validateJson(label: string, value: string) {
     try {
       JSON.parse(value);
       return null;
     } catch (e: any) {
-      return `${label}: JSON inválido (${e.message})`;
+      return tr("toolForm.invalidJson", { label, msg: e.message });
     }
   }
 
@@ -80,6 +120,7 @@ export default function ToolForm({ initial, onCancel, onSave }: Props) {
         timeoutMs: Number(timeoutMs),
         maxResponseKb: Number(maxResponseKb),
         allowedHosts,
+        secrets: buildSecretsJson(),
       });
     } catch (err: any) {
       setError(err.message);
@@ -88,7 +129,7 @@ export default function ToolForm({ initial, onCancel, onSave }: Props) {
 
   async function handleTest() {
     if (!initial) {
-      setError("Guardá la tool antes de probarla.");
+      setError(tr("toolForm.saveBeforeTest"));
       return;
     }
     try {
@@ -101,87 +142,235 @@ export default function ToolForm({ initial, onCancel, onSave }: Props) {
   }
 
   return (
-    <form className="col" onSubmit={handleSubmit}>
-      {error && <div className="msg system" style={{ color: "var(--danger)" }}>{error}</div>}
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {error && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
 
-      <div className="row" style={{ gap: 12 }}>
-        <div className="field" style={{ flex: 1 }}>
-          <label>name (técnico, sin espacios)</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} required pattern="[a-zA-Z_][a-zA-Z0-9_]*" />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>displayName</label>
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-        </div>
-        <div className="field">
-          <label>enabled</label>
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{tr("toolForm.sectionGeneral")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+            <div className="space-y-1.5">
+              <Label htmlFor="t-name">name</Label>
+              <Input
+                id="t-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                pattern="[a-zA-Z_][a-zA-Z0-9_]*"
+                placeholder="my_tool"
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="t-display">displayName</Label>
+              <Input
+                id="t-display"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+                placeholder="My Tool"
+              />
+            </div>
+            <div className="flex items-end">
+              <label className="flex h-10 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-border bg-secondary"
+                />
+                enabled
+              </label>
+            </div>
+          </div>
 
-      <div className="field">
-        <label>description</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} required />
-      </div>
-      <div className="field">
-        <label>usageGuidance (cuándo usarla)</label>
-        <textarea value={usageGuidance} onChange={(e) => setUsageGuidance(e.target.value)} />
-      </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="t-desc">description</Label>
+            <Textarea
+              id="t-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
+              rows={2}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="t-usage">usageGuidance</Label>
+            <Textarea
+              id="t-usage"
+              value={usageGuidance}
+              onChange={(e) => setUsageGuidance(e.target.value)}
+              rows={2}
+              placeholder="When should the model use this tool?"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="row" style={{ gap: 12 }}>
-        <div className="field" style={{ width: 120 }}>
-          <label>method</label>
-          <select value={method} onChange={(e) => setMethod(e.target.value)}>
-            <option>GET</option>
-            <option>POST</option>
-            <option>PUT</option>
-            <option>PATCH</option>
-            <option>DELETE</option>
-          </select>
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>url (soporta {"{{var}}"})</label>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} required />
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{tr("toolForm.sectionHttp")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-[140px_1fr]">
+            <div className="space-y-1.5">
+              <Label>method</Label>
+              <Select value={method} onValueChange={setMethod}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="t-url">url (supports {"{{var}}"})</Label>
+              <Input
+                id="t-url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                required
+                placeholder="https://api.example.com/{{path}}"
+                className="font-mono"
+              />
+            </div>
+          </div>
 
-      <div className="row" style={{ gap: 12 }}>
-        <div className="field" style={{ flex: 1 }}>
-          <label>timeoutMs</label>
-          <input type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(Number(e.target.value))} />
-        </div>
-        <div className="field" style={{ flex: 1 }}>
-          <label>maxResponseKb</label>
-          <input type="number" value={maxResponseKb} onChange={(e) => setMaxResponseKb(Number(e.target.value))} />
-        </div>
-      </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="t-timeout">timeoutMs</Label>
+              <Input
+                id="t-timeout"
+                type="number"
+                value={timeoutMs}
+                onChange={(e) => setTimeoutMs(Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="t-maxkb">maxResponseKb</Label>
+              <Input
+                id="t-maxkb"
+                type="number"
+                value={maxResponseKb}
+                onChange={(e) => setMaxResponseKb(Number(e.target.value))}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-      <JsonField label="headers (JSON)" value={headers} onChange={setHeaders} />
-      <JsonField label="queryParams (JSON)" value={queryParams} onChange={setQueryParams} />
-      <JsonField label="bodyTemplate (JSON)" value={bodyTemplate} onChange={setBodyTemplate} />
-      <JsonField label="parameters (JSON Schema)" value={parameters} onChange={setParameters} rows={10} />
-      <JsonField label="parameterPolicy (JSON)" value={parameterPolicy} onChange={setParameterPolicy} rows={6} />
-      <JsonField label="responseMapping (JSON)" value={responseMapping} onChange={setResponseMapping} />
-      <JsonField label="allowedHosts (JSON array)" value={allowedHosts} onChange={setAllowedHosts} />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{tr("toolForm.sectionJson")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <JsonField label="headers" value={headers} onChange={setHeaders} />
+          <JsonField label="queryParams" value={queryParams} onChange={setQueryParams} />
+          <JsonField label="bodyTemplate" value={bodyTemplate} onChange={setBodyTemplate} />
+          <JsonField label="parameters (JSON Schema)" value={parameters} onChange={setParameters} rows={10} />
+          <JsonField label="parameterPolicy" value={parameterPolicy} onChange={setParameterPolicy} rows={6} />
+          <JsonField label="responseMapping" value={responseMapping} onChange={setResponseMapping} />
+          <JsonField label="allowedHosts (JSON array)" value={allowedHosts} onChange={setAllowedHosts} />
+        </CardContent>
+      </Card>
 
-      <div className="row" style={{ gap: 8 }}>
-        <button type="submit" className="primary">Guardar</button>
-        <button type="button" onClick={onCancel}>Cancelar</button>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{tr("toolForm.secrets").split(" —")[0]}</CardTitle>
+          <CardDescription>{tr("toolForm.secretsHelp")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {secrets.map((s, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                placeholder="VAR_NAME"
+                value={s.key}
+                onChange={(e) => {
+                  const copy = [...secrets];
+                  copy[i] = { ...copy[i], key: e.target.value };
+                  setSecrets(copy);
+                }}
+                className="font-mono"
+              />
+              <Input
+                type="password"
+                placeholder={s.placeholder ? "*** (current; empty = keep)" : "value"}
+                value={s.value}
+                onChange={(e) => {
+                  const copy = [...secrets];
+                  copy[i] = { ...copy[i], value: e.target.value };
+                  setSecrets(copy);
+                }}
+                className="flex-[2]"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setSecrets(secrets.filter((_, j) => j !== i))}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => setSecrets([...secrets, { key: "", value: "", placeholder: false }])}
+          >
+            <Plus className="h-4 w-4" />
+            {tr("toolForm.secretsAdd").replace(/^\+\s*/, "")}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center gap-2">
+        <Button type="submit" className="gap-2">
+          <Save className="h-4 w-4" />
+          {tr("toolForm.save")}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} className="gap-2">
+          <X className="h-4 w-4" />
+          {tr("toolForm.cancel")}
+        </Button>
       </div>
 
       {initial && (
-        <div className="col" style={{ marginTop: 20, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-          <strong>Probar tool</strong>
-          <JsonField label="args (JSON)" value={testArgs} onChange={setTestArgs} rows={5} />
-          <div>
-            <button type="button" onClick={handleTest}>Ejecutar</button>
-          </div>
-          {testResult !== null && (
-            <pre style={{ background: "var(--panel)", padding: 12, borderRadius: 8, overflow: "auto", maxHeight: 300 }}>
-              {JSON.stringify(testResult, null, 2)}
-            </pre>
-          )}
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{tr("toolForm.test")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <JsonField label="args" value={testArgs} onChange={setTestArgs} rows={5} />
+            <Button type="button" variant="outline" onClick={handleTest} className="gap-2">
+              <Play className="h-4 w-4" />
+              {tr("toolForm.testRun")}
+            </Button>
+            {testResult !== null && (
+              <>
+                <Separator />
+                <pre className="max-h-80 overflow-auto rounded-md border border-border bg-secondary/50 p-3 font-mono text-xs">
+                  {JSON.stringify(testResult, null, 2)}
+                </pre>
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
     </form>
   );
@@ -192,20 +381,20 @@ function JsonField({
   value,
   onChange,
   rows = 4,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   onChange: (v: string) => void;
   rows?: number;
-}) {
+}>) {
   return (
-    <div className="field">
-      <label>{label}</label>
-      <textarea
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <Textarea
         rows={rows}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{ fontFamily: "ui-monospace, monospace" }}
+        className="font-mono text-xs"
       />
     </div>
   );

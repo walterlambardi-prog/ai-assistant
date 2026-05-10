@@ -39,20 +39,40 @@ const toolSchema = z.object({
   timeoutMs: z.number().int().positive().max(60000).default(10000),
   maxResponseKb: z.number().int().positive().max(8192).default(256),
   allowedHosts: jsonString.default("[]"),
+  secrets: jsonString.optional(),
 });
 
 const patchSchema = toolSchema.partial();
 
+/**
+ * Redacta el campo `secrets` antes de devolver al cliente.
+ * Reemplaza valores no vacíos por "***" preservando las keys.
+ */
+function redactTool<T extends { secrets?: string | null }>(t: T): T {
+  if (!t || !t.secrets) return t;
+  try {
+    const parsed = JSON.parse(t.secrets) as Record<string, unknown>;
+    const redacted: Record<string, string> = {};
+    for (const k of Object.keys(parsed)) {
+      const v = parsed[k];
+      redacted[k] = v === undefined || v === null || v === "" ? "" : "***";
+    }
+    return { ...t, secrets: JSON.stringify(redacted) };
+  } catch {
+    return { ...t, secrets: "{}" };
+  }
+}
+
 toolsRouter.get("/", async (_req, res) => {
   const list = await prisma.tool.findMany({ orderBy: { updatedAt: "desc" } });
-  res.json(list);
+  res.json(list.map(redactTool));
 });
 
 toolsRouter.post("/", async (req, res, next) => {
   try {
     const parsed = toolSchema.parse(req.body);
     const created = await prisma.tool.create({ data: parsed });
-    res.status(201).json(created);
+    res.status(201).json(redactTool(created));
   } catch (err) {
     next(err);
   }
@@ -61,17 +81,40 @@ toolsRouter.post("/", async (req, res, next) => {
 toolsRouter.get("/:id", async (req, res) => {
   const t = await prisma.tool.findUnique({ where: { id: req.params.id } });
   if (!t) return res.status(404).json({ error: "not_found" });
-  res.json(t);
+  res.json(redactTool(t));
 });
 
 toolsRouter.patch("/:id", async (req, res, next) => {
   try {
     const parsed = patchSchema.parse(req.body);
+    // Si vienen secrets, mergear con los existentes y descartar valores "***" (placeholder de UI)
+    let data: Record<string, unknown> = { ...parsed };
+    if (parsed.secrets !== undefined) {
+      const existing = await prisma.tool.findUnique({ where: { id: req.params.id } });
+      if (!existing) return res.status(404).json({ error: "not_found" });
+      const incoming = JSON.parse(parsed.secrets || "{}") as Record<string, unknown>;
+      const current = JSON.parse(existing.secrets || "{}") as Record<string, unknown>;
+      const merged: Record<string, unknown> = { ...current };
+      for (const [k, v] of Object.entries(incoming)) {
+        // Si el valor es "***" mantener el secreto existente
+        if (v === "***") continue;
+        if (v === "" || v === null) {
+          delete merged[k];
+        } else {
+          merged[k] = v;
+        }
+      }
+      // Borrar keys que el usuario removió (no presentes en incoming)
+      for (const k of Object.keys(current)) {
+        if (!(k in incoming)) delete merged[k];
+      }
+      data.secrets = JSON.stringify(merged);
+    }
     const updated = await prisma.tool.update({
       where: { id: req.params.id },
-      data: parsed,
+      data,
     });
-    res.json(updated);
+    res.json(redactTool(updated));
   } catch (err) {
     next(err);
   }
