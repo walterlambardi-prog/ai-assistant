@@ -8,6 +8,7 @@ import { messagesRouter } from "./routes/messages.routes";
 import { toolsRouter } from "./routes/tools.routes";
 import { configRouter } from "./routes/config.routes";
 import { audioRouter } from "./routes/audio.routes";
+import { prisma } from "./db/prisma";
 import { ZodError } from "zod";
 
 const app = express();
@@ -35,6 +36,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: message });
 });
 
-app.listen(env.PORT, () => {
+app.listen(env.PORT, async () => {
+  // Reset any sessions that were left as isProcessing=true due to a server crash.
+  const stuck = await prisma.session.updateMany({
+    where: { isProcessing: true },
+    data: { isProcessing: false, cancelRequested: false },
+  });
+  if (stuck.count > 0) logger.warn(`Reset ${stuck.count} stuck isProcessing session(s) on startup`);
   logger.info(`Backend listening on http://localhost:${env.PORT}`);
 });

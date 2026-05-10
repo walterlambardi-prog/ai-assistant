@@ -3,6 +3,47 @@ import { assertSafeUrl, redactHeaders } from "../utils/security";
 import type { ToolWithParsed } from "./dynamic-tools.service";
 import { logger } from "../utils/logger";
 
+// Apply a responseMapping to simplify large API payloads before sending to LLM.
+// Mapping is stored as JSON in the tool's responseMapping field.
+// Supported directives:
+//   { "type": "unsplash_photos" }  — extract photo array into slim objects
+//   { "type": "jmespath", "expr": "..." }  — reserved for future use
+function applyResponseMapping(tool: ToolWithParsed, data: unknown): unknown {
+  const mapping = tool.responseMappingObj;
+  if (!mapping || typeof mapping !== "object" || !("type" in mapping)) return data;
+
+  const type = (mapping as Record<string, unknown>).type;
+
+  if (type === "unsplash_photos") {
+    // Unsplash /search/photos → {total, results:[{id, description, alt_description, urls, user, links}]}
+    const d = data as any;
+    const results: any[] = Array.isArray(d?.results) ? d.results : Array.isArray(d) ? d : [];
+    return results.map((r: any) => ({
+      id: r.id,
+      description: r.alt_description || r.description || "",
+      image_url: r.urls?.regular || r.urls?.small || "",
+      thumb_url: r.urls?.thumb || "",
+      page_url: r.links?.html || "",
+      author: r.user?.name || "",
+    }));
+  }
+
+  if (type === "unsplash_random") {
+    // Unsplash /photos/random → single photo object
+    const r = data as any;
+    return {
+      id: r.id,
+      description: r.alt_description || r.description || "",
+      image_url: r.urls?.regular || r.urls?.small || "",
+      thumb_url: r.urls?.thumb || "",
+      page_url: r.links?.html || "",
+      author: r.user?.name || "",
+    };
+  }
+
+  return data;
+}
+
 export type ToolExecutionResult = {
   ok: boolean;
   status?: number;
@@ -22,7 +63,10 @@ export async function executeHttpTool(
   tool: ToolWithParsed,
   args: Record<string, unknown>
 ): Promise<ToolExecutionResult> {
-  const ctx: Record<string, unknown> = { ...args };
+  // Contexto de templating: args (de Ollama) + secrets de la tool.
+  // Los secrets sobreescriben args con el mismo nombre por seguridad,
+  // y `renderTemplate` también puede leer process.env como fallback.
+  const ctx: Record<string, unknown> = { ...args, ...(tool.secretsObj || {}) };
 
   // Render URL with template
   const renderedUrl = renderTemplate(tool.url, ctx);
@@ -120,7 +164,7 @@ export async function executeHttpTool(
       };
     }
 
-    return { ok: true, status: res.status, data, meta };
+    return { ok: true, status: res.status, data: applyResponseMapping(tool, data), meta };
   } catch (err: any) {
     const meta = {
       url: finalUrl,
