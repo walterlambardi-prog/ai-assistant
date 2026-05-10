@@ -31,6 +31,7 @@ export async function getEnabledTools() {
     }>(t.parameterPolicy, {}),
     responseMappingObj: safeParse<Record<string, unknown>>(t.responseMapping, {}),
     allowedHostsArr: safeParse<string[]>(t.allowedHosts, []),
+    secretsObj: safeParse<Record<string, string>>(t.secrets, {}),
   }));
 }
 
@@ -50,6 +51,7 @@ export async function getToolByName(name: string) {
     parameterPolicyObj: safeParse<any>(t.parameterPolicy, {}),
     responseMappingObj: safeParse<Record<string, unknown>>(t.responseMapping, {}),
     allowedHostsArr: safeParse<string[]>(t.allowedHosts, []),
+    secretsObj: safeParse<Record<string, string>>(t.secrets, {}),
   };
 }
 
@@ -79,8 +81,16 @@ export async function getServicesDescriptionForPrompt(): Promise<string> {
 
 export function applyDefaults(tool: ToolWithParsed, args: Record<string, unknown>) {
   const defaults = tool.parameterPolicyObj.defaults || {};
-  const merged = { ...defaults, ...(args || {}) };
-  return merged;
+  // Sanitize incoming args: drop null/undefined and empty strings so that
+  // optional parameters left blank by the LLM don't trigger schema errors
+  // and don't override defaults. We keep 0 and false on purpose.
+  const cleaned: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args || {})) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string" && v.trim() === "") continue;
+    cleaned[k] = v;
+  }
+  return { ...defaults, ...cleaned };
 }
 
 export function validateToolArguments(

@@ -8,13 +8,15 @@ datasource db {
 }
 
 model Session {
-  id           String    @id @default(cuid())
-  title        String    @default("Nueva sesión")
-  model        String?
-  systemPrompt String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  messages     Message[]
+  id              String    @id @default(cuid())
+  title           String    @default("Nueva sesión")
+  model           String?
+  systemPrompt    String?
+  cancelRequested Boolean   @default(false)
+  isProcessing    Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  messages        Message[]
 }
 
 model Message {
@@ -52,18 +54,24 @@ model Tool {
   timeoutMs       Int      @default(10000)
   maxResponseKb   Int      @default(256)
   allowedHosts    String   @default("[]")        // JSON array
+  secrets         String   @default("{}")        // JSON {KEY:value} - nunca se devuelve al cliente
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
 
 model AppConfig {
-  id             String   @id @default("singleton")
-  defaultModel   String   @default("qwen2.5:7b")
-  temperature    Float    @default(0.3)
-  topP           Float    @default(0.9)
-  ollamaBaseUrl  String   @default("http://localhost:11434")
-  ttsEnabled     Boolean  @default(true)
-  sttEnabled     Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String   @id @default("singleton")
+  defaultModel     String   @default("qwen2.5:7b")
+  temperature      Float    @default(0.3)
+  topP             Float    @default(0.9)
+  ollamaBaseUrl    String   @default("http://localhost:11434")
+  ttsEnabled       Boolean  @default(true)
+  sttEnabled       Boolean  @default(false)
+  ttsVoice         String?
+  ttsRate          Int?
+  language         String   @default("en")
+  systemPromptEn   String?
+  systemPromptEs   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
