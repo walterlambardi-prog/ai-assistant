@@ -5,9 +5,9 @@
 @layer base {
   :root {
     /* ChatGPT-style neutral black theme */
-    --background: 0 0% 13%;
+    --background: 0 0% 0%;
     --foreground: 0 0% 92%;
-    --card: 0 0% 16%;
+    --card: 0 0% 4%;
     --card-foreground: 0 0% 92%;
     --popover: 0 0% 16%;
     --popover-foreground: 0 0% 92%;
