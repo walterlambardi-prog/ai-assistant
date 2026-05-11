@@ -161,6 +161,8 @@
   "voiceRecorder": {
     "noMic": "No se pudo acceder al micrófono: ",
     "record": "Grabar voz",
-    "stop": "Detener"
+    "stop": "Enviar",
+    "cancel": "Cancelar",
+    "listening": "Escuchando"
   }
 }

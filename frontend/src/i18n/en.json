@@ -161,6 +161,8 @@
   "voiceRecorder": {
     "noMic": "Could not access microphone: ",
     "record": "Record voice",
-    "stop": "Stop"
+    "stop": "Send",
+    "cancel": "Cancel",
+    "listening": "Listening"
   }
 }
