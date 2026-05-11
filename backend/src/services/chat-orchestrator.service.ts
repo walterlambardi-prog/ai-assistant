@@ -29,6 +29,7 @@ Rules:
 - If an optional parameter would help a lot, you may ask a single clarifying question.
 - If there is no suitable tool, say so clearly.
 - Never invent current data if a suitable tool exists.
+- TOOL FAILURES: If a tool returns ok=false, an error field, or empty/null data, you MUST clearly tell the user that you could not retrieve that information (e.g. "I was unable to get [X] — the service returned an error"). NEVER fabricate, guess, or fill in data when a tool has failed. Do not present invented data as if it came from the service.
 - MULTI-STEP REQUESTS: If the user asks for several different things (e.g. photos of different subjects, plus an article), decompose the request and call each tool separately in sequence. Do NOT try to satisfy everything in one tool call. Call tool 1, get result, call tool 2, get result, etc., then compose the final answer.
 - RE-EXECUTE REQUESTS: If the user asks to "repeat", "redo", "run again", "execute again" or similar for a set of previous tasks, you MUST execute ALL of the tasks in that set by calling each tool separately in sequence — not just the last one. For example, if your previous response listed 4 actions (image search, Wikipedia, price check, etc.), re-execute all 4 of them.
 - If the user asks for images, photos, pictures or any visual material about any topic, you MUST call the image search tool (unsplash_search_photos or wikimedia_commons_search). NEVER fabricate or guess image URLs — Unsplash photo IDs do not exist until retrieved from the tool. NEVER use placeholder domains like example.com, placeholder.com, via.placeholder.com, or any invented URL. Always call the tool first, then use the exact URLs from the tool result.
@@ -55,6 +56,7 @@ Reglas:
 - Si un parámetro opcional ayudaría mucho, puedes hacer una sola pregunta aclaratoria.
 - Si no existe una tool adecuada, dilo claramente.
 - Nunca inventes datos actuales si hay una tool apropiada.
+- FALLAS DE TOOLS: Si una tool devuelve ok=false, un campo error, o datos vacíos/nulos, DEBES informar claramente al usuario que no pudiste obtener esa información (ej: "No pude obtener [X] — el servicio devolvió un error"). NUNCA inventes, adivines ni completes información cuando una tool ha fallado. No presentes datos inventados como si vinieran del servicio.
 - REQUESTS MÚLTIPLES: Si el usuario pide varias cosas distintas (ej: fotos de temas diferentes, más un artículo), descompone el pedido y llama cada tool por separado en secuencia. NO intentes satisfacer todo en una sola llamada. Llama la tool 1, obtén el resultado, llama la tool 2, obtén el resultado, etc., y luego compone la respuesta final.
 - RE-EJECUCIÓN DE PEDIDOS: Si el usuario pide "repetir", "volver a ejecutar", "hacer de nuevo", "ejecutar nuevamente" o similar sobre un conjunto de tareas anteriores, DEBES ejecutar TODAS las tareas de ese conjunto llamando cada tool por separado en secuencia — no solo la última. Por ejemplo, si tu respuesta anterior listó 4 acciones (búsqueda de imagen, Wikipedia, precio, etc.), vuelve a ejecutar las 4.
 - Si el usuario pide imágenes, fotos, fotografías o cualquier material visual sobre cualquier tema, DEBES llamar a la tool de búsqueda de imágenes (unsplash_search_photos o wikimedia_commons_search). NUNCA inventes ni adivines URLs de imágenes — los IDs de fotos de Unsplash no existen hasta obtenerlos de la tool. NUNCA uses dominios de placeholder como example.com, placeholder.com, via.placeholder.com, ni ninguna URL inventada. Llamá la tool primero y usá las URLs exactas del resultado.
@@ -362,12 +364,19 @@ export async function runChatTurn(input: {
       // Persist results and accumulate stats sequentially (order matters for history)
       for (const { tool, args, execResult, durationMs } of execResults) {
         toolMs += durationMs;
-        const resultContent = JSON.stringify({
+        const resultObj: Record<string, unknown> = {
           ok: execResult.ok,
           status: execResult.status,
           data: execResult.data,
           error: execResult.error,
-        });
+        };
+        if (!execResult.ok) {
+          resultObj.__directive__ =
+            cfg.language === "es"
+              ? `IMPORTANTE: Esta tool FALLÓ (ok=false). No tienes datos de "${tool.displayName}". DEBES informar al usuario que no pudiste obtener esa información. NUNCA inventes ni supongas los datos.`
+              : `IMPORTANT: This tool FAILED (ok=false). You have no data from "${tool.displayName}". You MUST tell the user you could not retrieve this information. NEVER fabricate or guess the data.`;
+        }
+        const resultContent = JSON.stringify(resultObj);
 
         await prisma.message.create({
           data: {
@@ -403,8 +412,8 @@ export async function runChatTurn(input: {
           role: "system",
           content:
             cfg.language === "es"
-              ? "Tools ejecutadas con éxito. Si el pedido original del usuario requiere más datos (más temas, más búsquedas, más servicios), llamá la siguiente tool ahora. Solo respondé en lenguaje natural cuando tengas TODOS los datos necesarios para completar el pedido."
-              : "Tools executed successfully. If the user's original request requires more data (more topics, more searches, more services), call the next tool now. Only reply in natural language when you have ALL the data needed to complete the request.",
+              ? "Tools ejecutadas. Si el pedido original requiere más datos, llamá la siguiente tool ahora. IMPORTANTE: si alguna tool devolvió ok=false o un error, DEBES informar ese fallo honestamente — nunca inventes los datos que debería haber devuelto. Solo respondé en lenguaje natural cuando tengas todos los datos necesarios."
+              : "Tools executed. If the original request requires more data, call the next tool now. IMPORTANT: if any tool returned ok=false or an error, you MUST report that failure honestly — never invent the data it should have returned. Only reply in natural language when you have all the data needed.",
         };
     const messagesNext: OllamaMessage[] = [
       { role: "system", content: systemPrompt },
@@ -722,10 +731,22 @@ export async function runChatTurnStreaming(input: {
     for (const { tool, args, execResult, durationMs } of execResults) {
       toolMs += durationMs;
       onToolEnd?.({ name: tool.name, displayName: tool.displayName, ok: execResult.ok, durationMs });
+      const streamResultObj: Record<string, unknown> = {
+        ok: execResult.ok,
+        status: execResult.status,
+        data: execResult.data,
+        error: execResult.error,
+      };
+      if (!execResult.ok) {
+        streamResultObj.__directive__ =
+          cfg.language === "es"
+            ? `IMPORTANTE: Esta tool FALLÓ (ok=false). No tienes datos de "${tool.displayName}". DEBES informar al usuario que no pudiste obtener esa información. NUNCA inventes ni supongas los datos.`
+            : `IMPORTANT: This tool FAILED (ok=false). You have no data from "${tool.displayName}". You MUST tell the user you could not retrieve this information. NEVER fabricate or guess the data.`;
+      }
       await prisma.message.create({
         data: {
           sessionId, role: "tool", toolName: tool.name,
-          content: JSON.stringify({ ok: execResult.ok, status: execResult.status, data: execResult.data, error: execResult.error }),
+          content: JSON.stringify(streamResultObj),
           inputType: "tool", outputType: "tool_result",
           metadata: JSON.stringify({ args, meta: execResult.meta, durationMs }),
         },
@@ -752,6 +773,19 @@ export async function runChatTurnStreaming(input: {
   let finalText = "";
   const textFromLoop = response.message?.content ?? "";
 
+  // Build no-hallucination hint for any failed tools
+  const failedTools = toolCalls.filter((tc) => !tc.ok);
+  const noHallucinateHint: OllamaMessage | null =
+    failedTools.length > 0
+      ? {
+          role: "system",
+          content:
+            cfg.language === "es"
+              ? `RECORDATORIO CRÍTICO: Las siguientes tools FALLARON y no tienen datos reales: ${failedTools.map((t) => t.displayName).join(", ")}. DEBES informar al usuario que no pudiste obtener esa información. NUNCA inventes ni supongas los datos que deberían haber devuelto esas tools.`
+              : `CRITICAL REMINDER: The following tools FAILED and have no real data: ${failedTools.map((t) => t.displayName).join(", ")}. You MUST tell the user you could not retrieve that information. NEVER fabricate or guess what those failed tools should have returned.`,
+        }
+      : null;
+
   if (toolCalls.length > 0 && textFromLoop) {
     // The loop already has the final answer — emit it as tokens directly
     logger.info(`[streaming] using loop response directly (${toolCalls.length} tools executed, ${textFromLoop.length} chars)`);
@@ -759,7 +793,11 @@ export async function runChatTurnStreaming(input: {
     finalText = textFromLoop;
   } else {
     // Pure text turn (no tools) or loop ended without text — stream from Ollama
-    const finalMessages = [{ role: "system" as const, content: systemPrompt }, ...(await loadHistory(sessionId))];
+    const finalMessages = [
+      { role: "system" as const, content: systemPrompt },
+      ...(await loadHistory(sessionId)),
+      ...(noHallucinateHint ? [noHallucinateHint] : []),
+    ];
     logger.debug(
       `[streaming] final LLM call — history msgs=${finalMessages.length} tool_results=${finalMessages.filter(m => m.role === "tool").length}`
     );

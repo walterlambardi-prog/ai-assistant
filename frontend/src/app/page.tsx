@@ -124,21 +124,23 @@ export default function HomePage() {
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
-    // If there was an active request for the previous session, move it to background tracking.
-    if (abortRef.current && activeIdRef.current) {
-      const prevSid = activeIdRef.current;
-      const prevCount = messagesRef.current.length;
-      backgroundSessionsRef.current.set(prevSid, prevCount);
-      setBackgroundSessionIds((prev) => new Set([...prev, prevSid]));
+    const prevId = activeIdRef.current;
+    // Only abort/reset when the user explicitly switches between sessions.
+    // If prevId is null (no previous session), we may be creating a new session to send
+    // the first message immediately — aborting in that case kills the in-flight request.
+    const isSwitching = prevId !== null && prevId !== activeId;
+    if (isSwitching) {
+      if (abortRef.current) {
+        const prevCount = messagesRef.current.length;
+        backgroundSessionsRef.current.set(prevId, prevCount);
+        setBackgroundSessionIds((prev) => new Set([...prev, prevId]));
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+      setLoading(false);
+      setStreamingText(null);
+      setStreamingPhase(null);
     }
-    // Abort any in-flight request from the previous session
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
-    setLoading(false);
-    setStreamingText(null);
-    setStreamingPhase(null);
     activeIdRef.current = activeId;
     if (activeId) refreshMessagesAndCheckProcessing(activeId).catch((e) => setErr(String(e)));
     else setMessages([]);
