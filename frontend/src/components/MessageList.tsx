@@ -1,6 +1,7 @@
 "use client";
 import type { Message } from "@/lib/types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { audioUrl } from "@/lib/api";
@@ -8,6 +9,8 @@ import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Copy, Check, ChevronDown, ChevronRight, Wrench, User, Sparkles, Square, Clock, Cpu, Zap, X, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const ParticlesBackground = dynamic(() => import("@/components/ParticlesBackground"), { ssr: false });
 import Link from "next/link";
 import AudioPlayer from "@/components/AudioPlayer";
 
@@ -130,23 +133,35 @@ function EmptyState() {
   const linkText = t("messages.emptySubTools");
   const parts = sub.split("{tools}");
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center px-6 py-24 text-center">
-      <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-lg">
-        <Sparkles className="h-7 w-7" />
+    <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden">
+      {/* particles layer */}
+      <ParticlesBackground />
+
+      {/* glass card */}
+      <div className="relative z-10 mx-auto flex max-w-lg flex-col items-center px-10 py-12 text-center">
+        {/* glow ring behind icon */}
+        <div className="mb-6 relative">
+          <div className="absolute inset-0 rounded-3xl bg-emerald-500/20 blur-2xl scale-150" />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-xl ring-1 ring-emerald-500/30">
+            <Sparkles className="h-8 w-8" />
+          </div>
+        </div>
+
+        <h1 className="mb-3 text-3xl font-semibold tracking-tight text-foreground">
+          {t("messages.empty")}
+        </h1>
+
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {parts[0]}
+          <Link
+            href="/admin/tools"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            {linkText}
+          </Link>
+          {parts[1] ?? ""}
+        </p>
       </div>
-      <h1 className="mb-2 text-3xl font-semibold tracking-tight text-foreground">
-        {t("messages.empty")}
-      </h1>
-      <p className="text-sm text-muted-foreground">
-        {parts[0]}
-        <Link
-          href="/admin/tools"
-          className="font-medium text-foreground underline-offset-4 hover:underline"
-        >
-          {linkText}
-        </Link>
-        {parts[1] ?? ""}
-      </p>
     </div>
   );
 }

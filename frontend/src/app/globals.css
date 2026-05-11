@@ -4,25 +4,25 @@
 
 @layer base {
   :root {
-    /* shadcn dark theme — inspired by ChatGPT/Claude */
-    --background: 222 14% 7%;
-    --foreground: 210 20% 92%;
-    --card: 222 14% 9%;
-    --card-foreground: 210 20% 92%;
-    --popover: 222 14% 9%;
-    --popover-foreground: 210 20% 92%;
-    --primary: 210 20% 92%;
-    --primary-foreground: 222 14% 7%;
-    --secondary: 222 12% 14%;
-    --secondary-foreground: 210 20% 92%;
-    --muted: 222 12% 14%;
-    --muted-foreground: 215 14% 60%;
-    --accent: 222 12% 18%;
-    --accent-foreground: 210 20% 92%;
+    /* ChatGPT-style neutral black theme */
+    --background: 0 0% 13%;
+    --foreground: 0 0% 92%;
+    --card: 0 0% 16%;
+    --card-foreground: 0 0% 92%;
+    --popover: 0 0% 16%;
+    --popover-foreground: 0 0% 92%;
+    --primary: 0 0% 92%;
+    --primary-foreground: 0 0% 13%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 92%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 22%;
+    --accent-foreground: 0 0% 92%;
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 98%;
-    --border: 222 12% 16%;
-    --input: 222 12% 14%;
+    --border: 0 0% 20%;
+    --input: 0 0% 18%;
     --ring: 217 91% 60%;
     --radius: 0.625rem;
   }

@@ -246,7 +246,7 @@ export default function SessionSidebar({
         ))}
       </ScrollArea>
 
-      <div className="border-t border-border p-2 space-y-0.5">
+      <div className="p-2 space-y-0.5">
         <a
           href="/admin/tools"
           className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-foreground/80 hover:bg-accent/50 hover:text-foreground"
