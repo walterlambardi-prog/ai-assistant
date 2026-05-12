@@ -112,7 +112,7 @@ sessionsRouter.post("/:id/cancel-last", async (req, res) => {
   const recent = await prisma.message.findMany({
     where: { sessionId },
     orderBy: { createdAt: "desc" },
-    take: 8,
+    take: 100, // enough to cover any turn with MAX_TOOL_ITERATIONS=10 + many tool calls
   });
   const cancelled: string[] = [];
   // Recorremos desde la más nueva hasta encontrar (e incluir) el último user message.

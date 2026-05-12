@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronRight,
   Mic,
+  Ban,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -131,11 +132,40 @@ function ToolCard({ msg }: { msg: Message }) {
 
 function TurnBlock({ turn }: { turn: Turn }) {
   const meta = safeJson(turn.assistant?.metadata);
+  const userMeta = safeJson(turn.user?.metadata);
   const timing = meta?.timing as {
     totalMs: number; llmMs: number; llmCalls: number; toolMs: number; toolCalls: number; model?: string;
   } | null;
-  const cancelled = meta?.cancelled as boolean | undefined;
+  // cancelled puede estar en el assistant (turno completado y luego cancelado)
+  // o en el user (cancelado antes de que el LLM respondiera)
+  const cancelled = !!(meta?.cancelled || userMeta?.cancelled);
   const isVoice = turn.user.inputType === "voice";
+
+  if (cancelled) {
+    return (
+      <div className="relative pb-7">
+        <div className="absolute left-[11px] top-7 bottom-0 w-px bg-border/40" />
+        <div className="flex items-start gap-3">
+          <div className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-muted-foreground/40 bg-muted/50 ring-2 ring-background">
+            <Ban className="h-3 w-3 text-muted-foreground/70" />
+          </div>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                {isVoice ? "Voice" : "User"}
+              </p>
+              <span className="rounded border border-orange-500/30 bg-orange-500/10 px-1.5 py-px font-mono text-[9px] uppercase tracking-wide text-orange-400/80">
+                cancelled
+              </span>
+            </div>
+            <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground/60 line-through decoration-muted-foreground/40">
+              {turn.user.content}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
@@ -207,10 +237,7 @@ function TurnBlock({ turn }: { turn: Turn }) {
                   </div>
                 )}
               </div>
-              <p className={cn(
-                "line-clamp-6 text-sm leading-relaxed text-foreground/90",
-                cancelled && "opacity-50 line-through decoration-muted-foreground/40"
-              )}>
+              <p className="line-clamp-6 text-sm leading-relaxed text-foreground/90">
                 {turn.assistant.content}
               </p>
             </div>
