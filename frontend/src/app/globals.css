@@ -89,6 +89,10 @@
 }
 
 /* Typing dots */
+@keyframes typing-bounce {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40%           { opacity: 1;   transform: translateY(-4px); }
+}
 .typing-dots { @apply inline-flex gap-1 items-center h-6; }
 .typing-dots > span {
   @apply w-1.5 h-1.5 rounded-full bg-muted-foreground;
