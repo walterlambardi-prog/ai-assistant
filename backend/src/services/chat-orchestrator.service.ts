@@ -201,6 +201,8 @@ export async function runChatTurn(input: {
 
   const MAX_TOOL_ITERATIONS = 10;
   const toolCalls: OrchestrationResult["toolCalls"] = [];
+  type LlmTraceEntry = { step: number; label: string; inputMessages: OllamaMessage[]; response: unknown };
+  const llmTrace: LlmTraceEntry[] = [];
   let tLlm = Date.now();
   let response = await chatWithOllama(
     {
@@ -214,6 +216,7 @@ export async function runChatTurn(input: {
   );
   llmMs += Date.now() - tLlm;
   llmCalls++;
+  llmTrace.push({ step: llmCalls, label: "initial", inputMessages: messages, response: response.message });
 
   // 4. Loop multi-step tool calling
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
@@ -434,6 +437,7 @@ export async function runChatTurn(input: {
     );
     llmMs += Date.now() - tLlm;
     llmCalls++;
+    llmTrace.push({ step: llmCalls, label: `tool-loop-iter-${iter + 1}`, inputMessages: messagesNext, response: response.message });
   }
 
   // Si después del loop el modelo sigue queriendo llamar tools, forzamos respuesta sin tools
@@ -542,6 +546,7 @@ export async function runChatTurn(input: {
       role: "assistant",
       content: finalText,
       outputType: "text",
+      llmTrace: JSON.stringify(llmTrace),
       metadata: JSON.stringify({
         timing: {
           totalMs,
@@ -667,6 +672,8 @@ export async function runChatTurnStreaming(input: {
   const history = await loadHistory(sessionId);
   const tools = await getToolDefinitionsForOllama();
   const toolCalls: OrchestrationResult["toolCalls"] = [];
+  type LlmTraceEntry = { step: number; label: string; inputMessages: OllamaMessage[]; response: unknown };
+  const llmTrace: LlmTraceEntry[] = [];
 
   let messages: OllamaMessage[] = [{ role: "system", content: systemPrompt }, ...history];
 
@@ -676,6 +683,7 @@ export async function runChatTurnStreaming(input: {
   let response = await chatWithOllama({ model, messages, tools: tools.length > 0 ? tools : undefined, temperature: cfg.temperature, topP: cfg.topP }, cfg.ollamaBaseUrl);
   llmMs += Date.now() - tLlm;
   llmCalls++;
+  llmTrace.push({ step: llmCalls, label: "initial", inputMessages: messages, response: response.message });
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
     const batchCalls = response.message?.tool_calls ?? [];
@@ -760,6 +768,7 @@ export async function runChatTurnStreaming(input: {
     response = await chatWithOllama({ model, messages, tools: tools.length > 0 ? tools : undefined, temperature: cfg.temperature, topP: cfg.topP }, cfg.ollamaBaseUrl);
     llmMs += Date.now() - tLlm;
     llmCalls++;
+    llmTrace.push({ step: llmCalls, label: `tool-loop-iter-${iter + 1}`, inputMessages: messages, response: response.message });
 
     logger.debug(
       `[streaming loop] iter=${toolCalls.length} tools toolResults in history=${updatedHistory.filter(m => m.role === "tool").length}`,
@@ -811,6 +820,7 @@ export async function runChatTurnStreaming(input: {
     }
     llmMs += Date.now() - tLlm;
     llmCalls++;
+    llmTrace.push({ step: llmCalls, label: "final-stream", inputMessages: finalMessages, response: { content: finalText } });
   }
 
   finalText = stripTrailingEmojis(finalText || "");
@@ -819,6 +829,7 @@ export async function runChatTurnStreaming(input: {
   const assistant = await prisma.message.create({
     data: {
       sessionId, role: "assistant", content: finalText, outputType: "text",
+      llmTrace: JSON.stringify(llmTrace),
       metadata: JSON.stringify({
         timing: { totalMs, llmMs, llmCalls, toolMs, toolCalls: toolCalls.length, model },
         tools: toolCalls.map((tc) => ({ name: tc.name, displayName: tc.displayName, ok: tc.ok, durationMs: tc.durationMs })),

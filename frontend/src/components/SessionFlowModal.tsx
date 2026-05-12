@@ -23,6 +23,7 @@ import {
   ChevronRight,
   Mic,
   Ban,
+  FileText,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -124,6 +125,109 @@ function ToolCard({ msg }: { msg: Message }) {
       </div>
       <JsonViewer data={meta?.args} label="Args" />
       <JsonViewer data={result?.data ?? result?.error} label={ok ? "Result" : "Error"} />
+    </div>
+  );
+}
+
+// ─── LlmTracePanel ─────────────────────────────────────────────────────
+
+type TraceEntry = {
+  step: number;
+  label: string;
+  inputMessages: Array<{ role: string; content?: string; tool_calls?: unknown; name?: string }>;
+  response: { role?: string; content?: string; tool_calls?: unknown } | null;
+};
+
+function LlmTracePanel({ llmTrace }: { llmTrace: string }) {
+  const [open, setOpen] = useState(false);
+  const [stepIdx, setStepIdx] = useState(0);
+  const entries: TraceEntry[] = safeJson(llmTrace) ?? [];
+  if (entries.length === 0) return null;
+  const entry = entries[stepIdx];
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-[10px] font-medium text-violet-400/70 hover:text-violet-400 transition-colors"
+      >
+        <FileText className="h-3 w-3" />
+        LLM Trace ({entries.length} call{entries.length !== 1 ? "s" : ""})
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      </button>
+
+      {open && (
+        <div className="mt-2 rounded-lg border border-violet-500/20 bg-violet-500/[0.03] p-3">
+          {/* Step tabs */}
+          {entries.length > 1 && (
+            <div className="mb-3 flex flex-wrap gap-1">
+              {entries.map((e, i) => (
+                <button
+                  key={e.step}
+                  type="button"
+                  onClick={() => setStepIdx(i)}
+                  className={cn(
+                    "rounded border px-2 py-0.5 font-mono text-[9px] uppercase tracking-wide transition-colors",
+                    stepIdx === i
+                      ? "border-violet-500/50 bg-violet-500/20 text-violet-300"
+                      : "border-border/50 bg-secondary/40 text-muted-foreground/60 hover:text-muted-foreground"
+                  )}
+                >
+                  {e.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Input messages */}
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400/60">Input ({entry.inputMessages.length} msgs)</p>
+          <div className="max-h-64 overflow-y-auto rounded border border-border/40 bg-background/60">
+            {entry.inputMessages.map((m, i) => (
+              <div key={i} className={cn("border-b border-border/30 px-2.5 py-2 last:border-0",
+                m.role === "system" && "bg-blue-500/[0.04]",
+                m.role === "user" && "bg-emerald-500/[0.04]",
+                m.role === "tool" && "bg-amber-500/[0.04]",
+                m.role === "assistant" && "bg-violet-500/[0.04]",
+              )}>
+                <span className={cn("font-mono text-[9px] font-semibold uppercase tracking-wide",
+                  m.role === "system" ? "text-blue-400/70" :
+                  m.role === "user" ? "text-emerald-400/70" :
+                  m.role === "tool" ? "text-amber-400/70" : "text-violet-400/70"
+                )}>{m.role}{m.name ? ` (${m.name})` : ""}</span>
+                {m.content && (
+                  <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-foreground/75">{m.content.length > 600 ? m.content.slice(0, 600) + "\u2026" : m.content}</pre>
+                )}
+                {Boolean(m.tool_calls) && (
+                  <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-amber-300/70">{JSON.stringify(m.tool_calls as object, null, 2)}</pre>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Response */}
+          <p className="mb-1.5 mt-3 text-[10px] font-semibold uppercase tracking-wider text-violet-400/60">Response</p>
+          <div className="rounded border border-border/40 bg-background/60 px-2.5 py-2">
+            {entry.response ? (
+              <>
+                {(entry.response as any).content && (
+                  <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-foreground/75">
+                    {String((entry.response as any).content).length > 800
+                      ? String((entry.response as any).content).slice(0, 800) + "\u2026"
+                      : String((entry.response as any).content)}
+                  </pre>
+                )}
+                {(entry.response as any).tool_calls && (
+                  <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-amber-300/70">
+                    {JSON.stringify((entry.response as any).tool_calls, null, 2)}
+                  </pre>
+                )}
+              </>
+            ) : (
+              <span className="font-mono text-[10px] text-muted-foreground/50">empty</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -240,6 +344,9 @@ function TurnBlock({ turn }: { turn: Turn }) {
               <p className="line-clamp-6 text-sm leading-relaxed text-foreground/90">
                 {turn.assistant.content}
               </p>
+              {turn.assistant.llmTrace && (
+                <LlmTracePanel llmTrace={turn.assistant.llmTrace} />
+              )}
             </div>
           </div>
         )}

@@ -18,6 +18,7 @@ export type Message = {
   audioUrl?: string | null;
   toolName?: string | null;
   metadata?: string | null;
+  llmTrace?: string | null;
   createdAt: string;
 };
 

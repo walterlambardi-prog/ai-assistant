@@ -30,6 +30,7 @@ model Message {
   audioUrl   String?
   toolName   String?
   metadata   String?  // JSON string
+  llmTrace   String?  // JSON array of {step, inputMessages, response} — one entry per LLM call in the turn
   createdAt  DateTime @default(now())
 
   @@index([sessionId, createdAt])
