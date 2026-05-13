@@ -326,6 +326,7 @@ export default function SessionSidebar({
         sessionId={flowSessionId}
         sessionTitle={sessions.find((s) => s.id === flowSessionId)?.title ?? ""}
         open={!!flowSessionId}
+        isProcessing={flowSessionId ? (processingIds?.has(flowSessionId) ?? false) : false}
         onClose={() => setFlowSessionId(null)}
       />
     </aside>

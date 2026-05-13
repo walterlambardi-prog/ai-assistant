@@ -361,6 +361,7 @@ type Props = {
   sessionId: string | null;
   sessionTitle: string;
   open: boolean;
+  isProcessing?: boolean;
   onClose: () => void;
 };
 
@@ -368,21 +369,35 @@ export default function SessionFlowModal({
   sessionId,
   sessionTitle,
   open,
+  isProcessing = false,
   onClose,
 }: Readonly<Props>) {
   const { t } = useI18n();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!open || !sessionId) return;
-    setLoading(true);
+  const fetchMessages = (showLoader: boolean) => {
+    if (!sessionId) return;
+    if (showLoader) setLoading(true);
     api
       .listMessages(sessionId)
       .then(setMessages)
       .catch(() => setMessages([]))
-      .finally(() => setLoading(false));
+      .finally(() => { if (showLoader) setLoading(false); });
+  };
+
+  // Initial load when modal opens
+  useEffect(() => {
+    if (!open || !sessionId) return;
+    fetchMessages(true);
   }, [open, sessionId]);
+
+  // Auto-refresh every 1.5s while a turn is being processed
+  useEffect(() => {
+    if (!open || !isProcessing) return;
+    const interval = setInterval(() => fetchMessages(false), 1500);
+    return () => clearInterval(interval);
+  }, [open, isProcessing, sessionId]);
 
   const turns = groupTurns(messages);
   const totalTools = turns.reduce((sum, turn) => sum + turn.tools.length, 0);

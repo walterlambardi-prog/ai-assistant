@@ -63,7 +63,7 @@ export async function getToolDefinitionsForOllama(): Promise<ToolDefinition[]> {
       name: t.name,
       description:
         (t.description || "") +
-        (t.usageGuidance ? `\n\nCuándo usarla: ${t.usageGuidance}` : ""),
+        (t.usageGuidance ? `\n\nInstructions: ${t.usageGuidance}` : ""),
       parameters: t.parametersObj,
     },
   }));
