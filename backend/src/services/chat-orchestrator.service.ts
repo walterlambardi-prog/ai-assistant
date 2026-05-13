@@ -34,6 +34,7 @@ Rules:
 - RE-EXECUTE REQUESTS: If the user asks to "repeat", "redo", "run again", "execute again" or similar for a set of previous tasks, you MUST execute ALL of the tasks in that set by calling each tool separately in sequence — not just the last one. For example, if your previous response listed 4 actions (image search, Wikipedia, price check, etc.), re-execute all 4 of them.
 - If the user asks for images, photos, pictures or any visual material about any topic, you MUST call the image search tool (unsplash_search_photos or wikimedia_commons_search). NEVER fabricate or guess image URLs — Unsplash photo IDs do not exist until retrieved from the tool. NEVER use placeholder domains like example.com, placeholder.com, via.placeholder.com, or any invented URL. Always call the tool first, then use the exact URLs from the tool result.
 - After receiving a tool result, summarize the information usefully.
+- LINKS: If the tool result contains any URLs (article pages, source links, image pages, reference links, etc.), include them in your response as Markdown links using the format \`[label](url)\`. Do not omit relevant links — the user should be able to click them. If the result has multiple links, list each one.
 - If a request requires chaining several tools (e.g. geocode first, then weather), chain them yourself without asking confirmation, and finally deliver a natural-language summary.
 - Never return raw JSON to the user. Always translate tool results into natural language.
 - When a tool accepts a language parameter (e.g. "lang", "language", "locale", "accept-language"), pass the active conversation language: "{{ACTIVE_LANG}}" (use "es" for Spanish, "en" for English) unless the user explicitly asks for content in another language.
@@ -61,6 +62,7 @@ Reglas:
 - RE-EJECUCIÓN DE PEDIDOS: Si el usuario pide "repetir", "volver a ejecutar", "hacer de nuevo", "ejecutar nuevamente" o similar sobre un conjunto de tareas anteriores, DEBES ejecutar TODAS las tareas de ese conjunto llamando cada tool por separado en secuencia — no solo la última. Por ejemplo, si tu respuesta anterior listó 4 acciones (búsqueda de imagen, Wikipedia, precio, etc.), vuelve a ejecutar las 4.
 - Si el usuario pide imágenes, fotos, fotografías o cualquier material visual sobre cualquier tema, DEBES llamar a la tool de búsqueda de imágenes (unsplash_search_photos o wikimedia_commons_search). NUNCA inventes ni adivines URLs de imágenes — los IDs de fotos de Unsplash no existen hasta obtenerlos de la tool. NUNCA uses dominios de placeholder como example.com, placeholder.com, via.placeholder.com, ni ninguna URL inventada. Llamá la tool primero y usá las URLs exactas del resultado.
 - Después de recibir resultado de una tool, resume la información de forma útil.
+- ENLACES: Si el resultado de la tool contiene URLs (artículos, páginas fuente, páginas de imágenes, enlaces de referencia, etc.), inclúyelos en tu respuesta como enlaces Markdown con el formato \`[texto](url)\`. No omitas enlaces relevantes — el usuario debe poder hacer clic en ellos. Si hay varios enlaces, lista cada uno.
 - Si una respuesta requiere usar varias tools en cadena (ej: primero geocode, luego clima), encadénalas tú mismo sin pedir confirmación al usuario, y al final entrega un resumen en lenguaje natural.
 - Nunca devuelvas JSON crudo al usuario. Siempre traduce el resultado de las tools a una respuesta en lenguaje natural.
 - Cuando una tool acepte un parámetro de idioma (por ejemplo "lang", "language", "locale", "accept-language"), pasa el idioma activo de la conversación: "{{ACTIVE_LANG}}" (usa "es" para español, "en" para inglés) salvo que el usuario pida explícitamente contenido en otro idioma.
@@ -508,7 +510,7 @@ export async function runChatTurn(input: {
         ? safeJson(tc.function.arguments)
         : tc.function.arguments || {};
       const tool2 = await getToolByName(toolName2);
-      if (tool2 && tool2.enabled) {
+      if (tool2?.enabled) {
         const args2 = applyDefaults(tool2, rawArgs2 as Record<string, unknown>);
         const val2 = validateToolArguments(tool2, args2);
         if (val2.ok) {

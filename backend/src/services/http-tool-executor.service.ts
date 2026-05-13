@@ -3,45 +3,110 @@ import { assertSafeUrl, redactHeaders } from "../utils/security";
 import type { ToolWithParsed } from "./dynamic-tools.service";
 import { logger } from "../utils/logger";
 
-// Apply a responseMapping to simplify large API payloads before sending to LLM.
-// Mapping is stored as JSON in the tool's responseMapping field.
+// ─── Declarative response mapping engine ──────────────────────────────────────
+//
+// Mappings are stored as JSON in the tool's `responseMapping` field and applied
+// to the API response before forwarding it to the LLM. The goal is to keep new
+// integrations purely declarative — no code changes per service.
+//
 // Supported directives:
-//   { "type": "unsplash_photos" }  — extract photo array into slim objects
-//   { "type": "jmespath", "expr": "..." }  — reserved for future use
+//
+//   { "type": "object_map", "fields": { dst: "path.to.src || fallback", ... } }
+//     Transforms a single object. Each value is a path expression (see below).
+//
+//   { "type": "array_map", "path": "results", "limit": 10,
+//     "fields": { dst: "path", ... } }
+//     Transforms an array. `path` (optional) selects the array from the root;
+//     if omitted, the root itself must be an array. `limit` (optional) truncates.
+//
+//   { "type": "pick", "fields": ["a", "b.c"], "limit": { "objectIDs": 10 } }
+//     Picks a small set of fields from the root. `limit` truncates arrays at
+//     the given keys.
+//
+// Path expression syntax:
+//   - dot-paths:        "a.b.c"
+//   - array indices:    "a.0.url"  or  "a[0].url"
+//   - boolean falsy fallback chain:  "primaryImageSmall || primaryImage"
+
+type Mapping = Record<string, unknown>;
+
+// Resolve a single path segment chain like "a.b.0.c" against an object.
+function resolvePath(obj: unknown, path: string): unknown {
+  if (!path) return obj;
+  const parts = path.replace(/\[(\w+)\]/g, ".$1").split(".").filter(Boolean);
+  let cur: any = obj;
+  for (const p of parts) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+// Resolve a path expression with optional fallbacks ("a || b || c").
+// Returns the first non-empty value (excludes "", null, undefined, NaN).
+function resolveExpr(obj: unknown, expr: string): unknown {
+  const alts = expr.split("||").map((s) => s.trim()).filter(Boolean);
+  for (const alt of alts) {
+    const v = resolvePath(obj, alt);
+    if (v !== undefined && v !== null && v !== "" && !(typeof v === "number" && Number.isNaN(v))) {
+      return v;
+    }
+  }
+  return "";
+}
+
+function mapFields(obj: unknown, fields: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [dst, expr] of Object.entries(fields)) {
+    out[dst] = resolveExpr(obj, expr);
+  }
+  return out;
+}
+
+function applyMapping(mapping: Mapping, data: unknown): unknown {
+  const type = mapping.type as string | undefined;
+  if (!type) return data;
+
+  if (type === "object_map") {
+    const fields = (mapping.fields as Record<string, string>) || {};
+    return mapFields(data, fields);
+  }
+
+  if (type === "array_map") {
+    const path = (mapping.path as string) || "";
+    const limit = typeof mapping.limit === "number" ? mapping.limit : undefined;
+    const fields = (mapping.fields as Record<string, string>) || {};
+    const raw = path ? resolvePath(data, path) : data;
+    const arr: unknown[] = Array.isArray(raw) ? raw : [];
+    const sliced = typeof limit === "number" ? arr.slice(0, limit) : arr;
+    return sliced.map((item) => mapFields(item, fields));
+  }
+
+  if (type === "pick") {
+    const fields = (mapping.fields as string[]) || [];
+    const limits = (mapping.limit as Record<string, number>) || {};
+    const out: Record<string, unknown> = {};
+    for (const f of fields) {
+      let v = resolvePath(data, f);
+      if (limits[f] && Array.isArray(v)) v = v.slice(0, limits[f]);
+      out[f] = v;
+    }
+    return out;
+  }
+
+  // Unknown type → pass through
+  return data;
+}
+
 function applyResponseMapping(tool: ToolWithParsed, data: unknown): unknown {
   const mapping = tool.responseMappingObj;
   if (!mapping || typeof mapping !== "object" || !("type" in mapping)) return data;
-
-  const type = (mapping as Record<string, unknown>).type;
-
-  if (type === "unsplash_photos") {
-    // Unsplash /search/photos → {total, results:[{id, description, alt_description, urls, user, links}]}
-    const d = data as any;
-    const results: any[] = Array.isArray(d?.results) ? d.results : Array.isArray(d) ? d : [];
-    return results.map((r: any) => ({
-      id: r.id,
-      description: r.alt_description || r.description || "",
-      image_url: r.urls?.regular || r.urls?.small || "",
-      thumb_url: r.urls?.thumb || "",
-      page_url: r.links?.html || "",
-      author: r.user?.name || "",
-    }));
+  try {
+    return applyMapping(mapping, data);
+  } catch (err: any) {
+    logger.warn(`[responseMapping] failed for tool=${tool.name}: ${err?.message || err}`);
+    return data;
   }
-
-  if (type === "unsplash_random") {
-    // Unsplash /photos/random → single photo object
-    const r = data as any;
-    return {
-      id: r.id,
-      description: r.alt_description || r.description || "",
-      image_url: r.urls?.regular || r.urls?.small || "",
-      thumb_url: r.urls?.thumb || "",
-      page_url: r.links?.html || "",
-      author: r.user?.name || "",
-    };
-  }
-
-  return data;
 }
 
 export type ToolExecutionResult = {
