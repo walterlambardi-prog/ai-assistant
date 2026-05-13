@@ -1,6 +1,6 @@
 import { renderObject, renderTemplate } from "../utils/template";
 import { assertSafeUrl, redactHeaders } from "../utils/security";
-import type { ToolWithParsed } from "./dynamic-tools.service";
+import { getToolByName, type ToolWithParsed } from "./dynamic-tools.service";
 import { logger } from "../utils/logger";
 
 // ─── Declarative response mapping engine ──────────────────────────────────────
@@ -23,12 +23,19 @@ import { logger } from "../utils/logger";
 //     Picks a small set of fields from the root. `limit` truncates arrays at
 //     the given keys.
 //
+//   { "type": "pick", "fields": ["a"], "limit": {"a": 3},
+//     "then": { "tool": "other_tool", "forEach": "a", "as": "paramName", "into": "results" } }
+//     After picking, calls `other_tool` for each element of field `a`, and merges the
+//     resolved objects into the `results` key. Enables automatic chaining (e.g. search →
+//     detail) without any LLM involvement.
+//
 // Path expression syntax:
 //   - dot-paths:        "a.b.c"
 //   - array indices:    "a.0.url"  or  "a[0].url"
 //   - boolean falsy fallback chain:  "primaryImageSmall || primaryImage"
 
 type Mapping = Record<string, unknown>;
+type ToolExecutor = (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
 
 // Resolve a single path segment chain like "a.b.0.c" against an object.
 function resolvePath(obj: unknown, path: string): unknown {
@@ -63,26 +70,24 @@ function mapFields(obj: unknown, fields: Record<string, string>): Record<string,
   return out;
 }
 
-function applyMapping(mapping: Mapping, data: unknown): unknown {
+async function applyMapping(mapping: Mapping, data: unknown, executor?: ToolExecutor): Promise<unknown> {
   const type = mapping.type as string | undefined;
   if (!type) return data;
 
+  let result: unknown;
+
   if (type === "object_map") {
     const fields = (mapping.fields as Record<string, string>) || {};
-    return mapFields(data, fields);
-  }
-
-  if (type === "array_map") {
+    result = mapFields(data, fields);
+  } else if (type === "array_map") {
     const path = (mapping.path as string) || "";
     const limit = typeof mapping.limit === "number" ? mapping.limit : undefined;
     const fields = (mapping.fields as Record<string, string>) || {};
     const raw = path ? resolvePath(data, path) : data;
     const arr: unknown[] = Array.isArray(raw) ? raw : [];
     const sliced = typeof limit === "number" ? arr.slice(0, limit) : arr;
-    return sliced.map((item) => mapFields(item, fields));
-  }
-
-  if (type === "pick") {
+    result = sliced.map((item) => mapFields(item, fields));
+  } else if (type === "pick") {
     const fields = (mapping.fields as string[]) || [];
     const limits = (mapping.limit as Record<string, number>) || {};
     const out: Record<string, unknown> = {};
@@ -91,18 +96,38 @@ function applyMapping(mapping: Mapping, data: unknown): unknown {
       if (limits[f] && Array.isArray(v)) v = v.slice(0, limits[f]);
       out[f] = v;
     }
-    return out;
+    result = out;
+  } else {
+    return data;
   }
 
-  // Unknown type → pass through
-  return data;
+  // then directive: auto-chain into another tool for each element of a field
+  const thenDir = mapping.then as { tool: string; forEach: string; as: string; into: string } | undefined;
+  if (thenDir && executor && result !== null && typeof result === "object" && !Array.isArray(result)) {
+    const ids = (result as Record<string, unknown>)[thenDir.forEach];
+    if (Array.isArray(ids) && ids.length > 0) {
+      logger.debug(`[responseMapping.then] chaining ${ids.length}x ${thenDir.tool}`);
+      const resolved = await Promise.all(
+        ids.map((id) => executor(thenDir.tool, { [thenDir.as]: id }))
+      );
+      result = { ...(result as Record<string, unknown>), [thenDir.into]: resolved };
+    }
+  }
+
+  return result;
 }
 
-function applyResponseMapping(tool: ToolWithParsed, data: unknown): unknown {
+async function applyResponseMapping(tool: ToolWithParsed, data: unknown): Promise<unknown> {
   const mapping = tool.responseMappingObj;
   if (!mapping || typeof mapping !== "object" || !("type" in mapping)) return data;
+  const executor: ToolExecutor = async (toolName, args) => {
+    const chainedTool = await getToolByName(toolName);
+    if (!chainedTool?.enabled) return null;
+    const res = await executeHttpTool(chainedTool, args);
+    return res.ok ? res.data : null;
+  };
   try {
-    return applyMapping(mapping, data);
+    return await applyMapping(mapping, data, executor);
   } catch (err: any) {
     logger.warn(`[responseMapping] failed for tool=${tool.name}: ${err?.message || err}`);
     return data;
@@ -229,7 +254,7 @@ export async function executeHttpTool(
       };
     }
 
-    return { ok: true, status: res.status, data: applyResponseMapping(tool, data), meta };
+    return { ok: true, status: res.status, data: await applyResponseMapping(tool, data), meta };
   } catch (err: any) {
     const meta = {
       url: finalUrl,
